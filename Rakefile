@@ -6,11 +6,10 @@ START_MODULE = "stocks_example"
 TEST_MODULE = "test_stocks_example"
 MNESIA_DIR = "/tmp"
 
-
 # No Need to change
 PWD = `pwd`.strip
 INCLUDE = "include"
-ERLC_FLAGS = "-I#{INCLUDE} +warn_unused_vars +warn_unused_import"
+ERLC_FLAGS = "-I#{INCLUDE} -I#{PWD}/deps/rabbitmq-erlang-client/deps +warn_unused_vars +warn_unused_import"
 
 SRC = FileList['src/**/*.erl']
 OBJ = SRC.pathmap("%{src,ebin}X.beam")
@@ -18,8 +17,8 @@ CLEAN.include(['**/*.dump'])
 CLEAN.include(['**/*.beam'])
 CLOBBER.include(['**/*.beam'])
 
+# create the ./ebin dir
 directory 'ebin'
-
 
 rule ".beam" =>  ["%{ebin,src}X.erl"] do |t|
   sh "erlc -pa ebin -W #{ERLC_FLAGS} -o ebin #{t.source}"
@@ -30,19 +29,18 @@ task :compile => ['ebin'] + OBJ
 
 desc "Open up a shell"
 task :shell => [:compile] do
-    sh("erl -sname #{START_MODULE} -pa #{PWD}/ebin")
+  sh("erl -sname #{START_MODULE} -pa #{PWD}/ebin -pa #{PWD}/deps/rabbitmq-erlang-client/ebin -pa #{PWD}/deps/rabbitmq-erlang-client/rabbitmq-server/ebin")
 end
 
-desc "Open up a shell and run #{START_MODULE}:start()" 
+desc "Open up a shell and run #{START_MODULE}:start()"
 task :run => [:compile] do
-    sh("erl -sname #{START_MODULE} -pa #{PWD}/ebin -run #{START_MODULE} start")
+  sh("erl -sname #{START_MODULE} -pa #{PWD}/ebin -pa #{PWD}/deps/rabbitmq-erlang-client/ebin -pa #{PWD}/deps/rabbitmq-erlang-client/rabbitmq-server/ebin -run #{START_MODULE} start")
 end
 
-desc "Run Unit Tests" 
-task :test do
-  sh("erl -noshell -s #{TEST_MODULE} test -s init stop")
-end
-
+#desc "Run Unit Tests"
+#task :test do
+#  sh("erl -noshell -s #{TEST_MODULE} test -s init stop")
+#end
 
 desc "Generate Documentation"
 task :doc do

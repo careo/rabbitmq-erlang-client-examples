@@ -2,7 +2,22 @@
 
 ## Setup
 
-Need to setup a symlink to the rabbitmq erlang client, which in turn needs a symlink to the rabbitmq server. Yeah. I need to clean that up.
+You need to download the source code for 'rabbitmq-server' and 'rabbitmq-erlang-client' and create two symlinks to successfully compile.
+
+- deps/rabbitmq-erlang-client => YOUR-SRC-DIR/rabbitmq-erlang-client
+- deps/rabbitmq-erlang-client/rabbitmq-server => YOUR-SRC-DIR/rabbitmq-server
+
+This was tested with rabbitmq-erlang-client source code as of changeset 681:9fe40c872e8d (Feb 14, 2010)
+
+## Compile
+
+cd rabbitmq-erlang-client-examples
+rake compile
+
+## Compile and Run Example Code
+
+cd rabbitmq-erlang-client-examples
+rake run
 
 ## References
 

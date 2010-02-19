@@ -1,24 +1,19 @@
 -module(stocks_example).
 
--include_lib("../rabbitmq-erlang-client/rabbitmq_server/include/rabbit.hrl").
--include_lib("../rabbitmq-erlang-client/rabbitmq_server/include/rabbit_framing.hrl").
--include("../rabbitmq-erlang-client/include/amqp_client.hrl").
+-include("../deps/rabbitmq-erlang-client/include/amqp_client.hrl").
 
 -export([start/0]).
 
 start() ->
     amqp_lifecycle().
-    
+
 amqp_lifecycle() ->
-    User = Password = "guest",
-    Realm = <<"/data">>,
 
     %% Start a connection to the server
-
-    Connection = amqp_connection:start(User, Password, "localhost"),
+    Connection = amqp_connection:start_network(),
 
     %% Once you have a connection to the server, you can start an AMQP channel gain access to a realm
-
+    Realm = <<"/data">>,
     Channel = amqp_connection:open_channel(Connection),
     Access = #'access.request'{realm = Realm,
                                exclusive = false,
@@ -29,7 +24,6 @@ amqp_lifecycle() ->
     #'access.request_ok'{ticket = Ticket} = amqp_channel:call(Channel, Access),
 
     %% Now that you have access to a realm within the server, you can declare a queue and bind it to an exchange
-
     Q = <<"my_stocks">>,
     X = <<"stocks">>,
     BindKey = <<"#">>,
@@ -51,6 +45,7 @@ amqp_lifecycle() ->
                                           auto_delete = false, internal = false,
                                           nowait = false, arguments = []},
     #'exchange.declare_ok'{} = amqp_channel:call(Channel, ExchangeDeclare),
+
     QueueBind = #'queue.bind'{ticket = Ticket,
                               queue = Q,
                               exchange = X,
@@ -58,37 +53,43 @@ amqp_lifecycle() ->
                               nowait = false, arguments = []},
     #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBind),
 
-    %% The queue has now been set up and you have an open channel to so you can do something useful now ....
+    %% Inject a sample message so we have something to consume later on.  For testing purposes only.
+    log(send_message,"start"),
+    RoutingKey = <<"test.routing.key">>,
+    Payload = <<"This is a really interesting message!">>,
+    send_message(Channel, Ticket, X, RoutingKey, Payload),
 
+    %% The queue has now been set up and you have an open channel to so you can do something useful now.
+    log(setup_consumer,"start"),
     setup_consumer(Channel, Ticket, Q),
+    log(setup_consumer,"finished"),
 
     %% After you've finished with the channel and connection you should close them down
-
+    log(channel_close,"start"),
     ChannelClose = #'channel.close'{reply_code = 200, reply_text = <<"Goodbye">>,
                                     class_id = 0, method_id = 0},
     #'channel.close_ok'{} = amqp_channel:call(Channel, ChannelClose),
-    ConnectionClose = #'connection.close'{reply_code = 200, reply_text = <<"Goodbye">>,
-                                          class_id = 0, method_id = 0},
-    #'connection.close_ok'{} = amqp_connection:close(Connection, ConnectionClose),
+
+    log(connection_close,"start"),
+    ok = amqp_connection:close(Connection, 200, <<"Goodbye">>),
+    log(connection_close,"Demo Completed!"),
     ok.
 
 send_message(Channel, Ticket, X, RoutingKey, Payload) ->
+    log(send_message,"basic.publish setup"),
     BasicPublish = #'basic.publish'{ticket = Ticket,
                                     exchange = X,
                                     routing_key = RoutingKey,
                                     mandatory = false,
                                     immediate = false},
-    Content = #content{class_id = 60,
-         properties = amqp_util:basic_properties(),
-         properties_bin = none,
-         payload_fragments_rev = [Payload]
-        },
-    amqp_channel:cast(Channel, BasicPublish, Content).
+
+    log(send_message,"amqp_channel:cast"),
+    ok = amqp_channel:cast(Channel, BasicPublish, _MsgPayload = #amqp_msg{payload = Payload}).
 
 setup_consumer(Channel, Ticket, Q) ->
 
     %% Register a consumer to listen to a queue
-
+    log(setup_consumer,"basic.consume"),
     BasicConsume = #'basic.consume'{ticket = Ticket,
                                     queue = Q,
                                     consumer_tag = <<"">>,
@@ -97,21 +98,23 @@ setup_consumer(Channel, Ticket, Q) ->
                                     exclusive = false,
                                     nowait = false},
     #'basic.consume_ok'{consumer_tag = ConsumerTag}
-                     = amqp_channel:call(Channel, BasicConsume, self()),
+                     = amqp_channel:subscribe(Channel, BasicConsume, self()),
 
     %% If the registration was sucessful, then consumer will be notified
-
+    log(setup_consumer,"basic.consume_ok start receive"),
     receive
         #'basic.consume_ok'{consumer_tag = ConsumerTag} -> ok
     end,
+    log(setup_consumer,"basic.consume_ok finished"),
 
     %% When a message is routed to the queue, it will then be delivered to this consumer
-
+    log(read_messages,"start"),
     Msg = read_messages(0),
     io:format("Msg: ~p~n", [Msg]),
-    
-    %% After the consumer is finished interacting with the queue, it can deregister itself
+    log(read_messages,"finish"),
 
+    %% After the consumer is finished interacting with the queue, it can deregister itself
+    log(basic_cancel,"start"),
     BasicCancel = #'basic.cancel'{consumer_tag = ConsumerTag,
                                   nowait = false},
     #'basic.cancel_ok'{consumer_tag = ConsumerTag} = amqp_channel:call(Channel,BasicCancel).
@@ -119,39 +122,22 @@ setup_consumer(Channel, Ticket, Q) ->
 read_messages(Timeouts) ->
     receive
         {#'basic.deliver'{consumer_tag=_ConsumerTag, delivery_tag=_DeliveryTag, redelivered=_Redelivered, exchange=_Exchange, routing_key=RoutingKey}, Content} ->
-            #content{payload_fragments_rev = Payload} = Content,
-            #content{properties_bin = PropertiesBin} = Content,
-            #content{class_id = ClassId} = Content,
-            #'P_basic'{content_type = ContentType} = rabbit_framing:decode_properties(ClassId, PropertiesBin),
-            #'P_basic'{headers = Headers} = rabbit_framing:decode_properties(ClassId, PropertiesBin),
+            log(read_messages,"basic.deliver"),
             io:format("RoutingKey received: ~p~n", [RoutingKey]),
-            io:format("ContentType received: ~p~n", [ContentType]),
-            io:format("Headers received: ~p~n", [Headers]),
-
-            case ContentType of 
-                <<"application/json">> ->
-                    Payload2 = mochijson2:decode(Payload),
-                    io:format("Payload2 received: ~p~n", [Payload2]);
-                _ ->
-                    io:format("Payload received: ~p~n", [Payload])
-            end,
-
-            _Properties = rabbit_framing:decode_properties(ClassId, PropertiesBin),
-
-            io:format("~n", []),
+            #amqp_msg{payload = Payload} = Content,
+            io:format("Payload received: ~p~n", [Payload]),
             read_messages(0);
         Any ->
-            io:format("Other: ~p~n", [Any]),
+            io:format("received unexpected Any: ~p~n", [Any]),
             read_messages(0)
-            
     after 1000 ->
         case Timeouts of
-            0 -> 
+            0 ->
                 Timeouts2 = Timeouts + 1,
                 read_messages(Timeouts2);
-            5 -> 
-                io:format("Message timeout exceeded ~n"),
-                exit(message_timeout_exceeded);
+            5 ->
+                io:format("~n"),
+                io:format("Message timeout exceeded ~n");
             _ ->
                 Timeouts2 = Timeouts + 1,
                 io:format("."),
