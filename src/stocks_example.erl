@@ -61,7 +61,7 @@ amqp_lifecycle() ->
     #'channel.close_ok'{} = amqp_channel:call(Channel, ChannelClose),
 
     log(connection_close,"start"),
-    ok = amqp_connection:close(Connection, 200, <<"Goodbye">>),
+    ok = amqp_connection:close(Connection),
     log(connection_close,"Demo Completed!"),
     ok.
 
