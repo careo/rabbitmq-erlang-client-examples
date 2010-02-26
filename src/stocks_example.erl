@@ -12,23 +12,15 @@ amqp_lifecycle() ->
     %% Start a connection to the server
     Connection = amqp_connection:start_network(),
 
-    %% Once you have a connection to the server, you can start an AMQP channel gain access to a realm
-    Realm = <<"/data">>,
+    %% Once you have a connection to the server, you can start an AMQP channel
     Channel = amqp_connection:open_channel(Connection),
-    Access = #'access.request'{realm = Realm,
-                               exclusive = false,
-                               passive = true,
-                               active = true,
-                               write = true,
-                               read = true},
-    #'access.request_ok'{ticket = Ticket} = amqp_channel:call(Channel, Access),
 
-    %% Now that you have access to a realm within the server, you can declare a queue and bind it to an exchange
+    %% Now that you have access to a connection with the server, you can declare a queue and bind it to an exchange
     Q = <<"my_stocks">>,
     X = <<"stocks">>,
     BindKey = <<"#">>,
 
-    QueueDeclare = #'queue.declare'{ticket = Ticket, queue = Q,
+    QueueDeclare = #'queue.declare'{queue = Q,
                                     passive = false, durable = false,
                                     exclusive = false, auto_delete = false,
                                     nowait = false, arguments = []},
@@ -39,15 +31,13 @@ amqp_lifecycle() ->
     log(message_count,MessageCount),
     log(consumer_count,ConsumerCount),
 
-    ExchangeDeclare = #'exchange.declare'{ticket = Ticket,
-                                          exchange = X, type = <<"topic">>,
+    ExchangeDeclare = #'exchange.declare'{exchange = X, type = <<"topic">>,
                                           passive = false, durable = false,
                                           auto_delete = false, internal = false,
                                           nowait = false, arguments = []},
     #'exchange.declare_ok'{} = amqp_channel:call(Channel, ExchangeDeclare),
 
-    QueueBind = #'queue.bind'{ticket = Ticket,
-                              queue = Q,
+    QueueBind = #'queue.bind'{queue = Q,
                               exchange = X,
                               routing_key = BindKey,
                               nowait = false, arguments = []},
@@ -57,11 +47,11 @@ amqp_lifecycle() ->
     log(send_message,"start"),
     RoutingKey = <<"test.routing.key">>,
     Payload = <<"This is a really interesting message!">>,
-    send_message(Channel, Ticket, X, RoutingKey, Payload),
+    send_message(Channel, X, RoutingKey, Payload),
 
     %% The queue has now been set up and you have an open channel to so you can do something useful now.
     log(setup_consumer,"start"),
-    setup_consumer(Channel, Ticket, Q),
+    setup_consumer(Channel, Q),
     log(setup_consumer,"finished"),
 
     %% After you've finished with the channel and connection you should close them down
@@ -75,10 +65,9 @@ amqp_lifecycle() ->
     log(connection_close,"Demo Completed!"),
     ok.
 
-send_message(Channel, Ticket, X, RoutingKey, Payload) ->
+send_message(Channel, X, RoutingKey, Payload) ->
     log(send_message,"basic.publish setup"),
-    BasicPublish = #'basic.publish'{ticket = Ticket,
-                                    exchange = X,
+    BasicPublish = #'basic.publish'{exchange = X,
                                     routing_key = RoutingKey,
                                     mandatory = false,
                                     immediate = false},
@@ -86,12 +75,11 @@ send_message(Channel, Ticket, X, RoutingKey, Payload) ->
     log(send_message,"amqp_channel:cast"),
     ok = amqp_channel:cast(Channel, BasicPublish, _MsgPayload = #amqp_msg{payload = Payload}).
 
-setup_consumer(Channel, Ticket, Q) ->
+setup_consumer(Channel, Q) ->
 
     %% Register a consumer to listen to a queue
     log(setup_consumer,"basic.consume"),
-    BasicConsume = #'basic.consume'{ticket = Ticket,
-                                    queue = Q,
+    BasicConsume = #'basic.consume'{queue = Q,
                                     consumer_tag = <<"">>,
                                     no_local = false,
                                     no_ack = true,
