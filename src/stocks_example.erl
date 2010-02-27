@@ -49,8 +49,7 @@ amqp_lifecycle() ->
 
     %% After you've finished with the channel and connection you should close them down
     log(channel_close,"start"),
-    ChannelClose = #'channel.close'{reply_code = 200, class_id = 0, method_id = 0},
-    #'channel.close_ok'{} = amqp_channel:call(Channel, ChannelClose),
+    ok = amqp_channel:close(Channel),
 
     log(connection_close,"start"),
     ok = amqp_connection:close(Connection),
