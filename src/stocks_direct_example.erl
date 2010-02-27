@@ -17,15 +17,15 @@ amqp_lifecycle() ->
     Channel = amqp_connection:open_channel(Connection),
 
     %% Now that you have access to a connection with the server, you can declare a queue and bind it to an exchange
-    Q = <<"my_stocks">>,
     X = <<"stocks">>,
     BindKey = <<"#">>,
 
-    QueueDeclare = #'queue.declare'{queue = Q},
+    QueueDeclare = #'queue.declare'{},
     #'queue.declare_ok'{queue = Q,
                         message_count = MessageCount,
                         consumer_count = ConsumerCount}
                             = amqp_channel:call(Channel, QueueDeclare),
+    log(queue,Q),
     log(message_count,MessageCount),
     log(consumer_count,ConsumerCount),
 
