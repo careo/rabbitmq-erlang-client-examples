@@ -10,10 +10,10 @@ start() ->
 amqp_lifecycle() ->
 
     %% Start a connection to the server
-    Connection = amqp_connection:start_network(),
+    {ok, Connection} = amqp_connection:start(network),
 
     %% Once you have a connection to the server, you can start an AMQP channel
-    Channel = amqp_connection:open_channel(Connection),
+    {ok, Channel} = amqp_connection:open_channel(Connection),
 
     %% Now that you have access to a connection with the server, you can declare a queue and bind it to an exchange
     X = <<"stocks">>,
