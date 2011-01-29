@@ -19,7 +19,7 @@ amqp_lifecycle() ->
     X = <<"stocks">>,
     BindKey = <<"#">>,
 
-    QueueDeclare = #'queue.declare'{},
+    QueueDeclare = #'queue.declare'{auto_delete = true},
     #'queue.declare_ok'{queue = Q,
                         message_count = MessageCount,
                         consumer_count = ConsumerCount}
